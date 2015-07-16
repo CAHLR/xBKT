@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <alloca.h>
 #include <Eigen/Core>
 #include <omp.h>
 #include "mex.h"
@@ -18,10 +19,12 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 {
 
     /* SETUP */
-    if (nrhs != 5) { mexErrMsgTxt("wrong number of arguments\n"); }
+    //Only acceptable if we have at least the 5 basic args and some number of
+    //name:value argument pairs
+    if (nrhs < 5 || nrhs % 2 == 0) { mexErrMsgTxt("wrong number of arguments\n"); }
 
     //// pull out inputs
-
+    IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
     // data
     if (!mxGetField(prhs[0],0,"data")) { mexErrMsgTxt("data missing 'data' field\n"); }
     int8_t *alldata = (int8_t *) mxGetData(mxGetField(prhs[0],0,"data"));
@@ -33,8 +36,11 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 
     if (!mxGetField(prhs[0],0,"starts")) { mexErrMsgTxt("data missing 'starts' field\n"); }
     int32_t *starts = (int32_t *) mxGetData(mxGetField(prhs[0],0,"starts"));
-    int num_sequences = max(mxGetM(mxGetField(prhs[0],0,"starts")),
+    
+    //TYPO WAS HERE
+    int num_sequences = max(mxGetN(mxGetField(prhs[0],0,"starts")),
             mxGetM(mxGetField(prhs[0],0,"starts")));
+
 
     if (!mxGetField(prhs[0],0,"lengths")) { mexErrMsgTxt("data missing 'lengths' field\n"); }
     int32_t *lengths = (int32_t *) mxGetData(mxGetField(prhs[0],0,"lengths"));
@@ -56,7 +62,45 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 
     if (!mxGetField(prhs[1],0,"prior")) { mexErrMsgTxt("model missing 'prior' field\n"); }
     double prior = mxGetScalar(mxGetField(prhs[1],0,"prior"));
-
+    
+    
+    /*CHECK FOR OPTIONAL NAME:VALUE PARAMS*/
+    bool normalizeLengths = false;
+    if (nrhs >= 7) {
+        int i = 5;
+        char* optName;
+        for(i; i + 1 < nrhs; i+= 2) {
+            if(mxIsChar(prhs[i])) {
+                optName = mxArrayToString(prhs[i]);
+                if(optName != NULL) {
+                    if(strcmp(optName, "normalize length") == 0) {
+                        if(mxIsLogical(prhs[i + 1])) {
+                            normalizeLengths = *mxGetLogicals(prhs[i + 1]);
+                        } 
+                        else {
+                            mexErrMsgIdAndTxt("E_Step:invalidInputValue",
+                                    "Expected boolean value for normalize length");
+                        }
+                        
+                    } 
+                    //other options here, if you want
+                    //If no matches, this is an unexpected param, so yell
+                    else {
+                        mexErrMsgIdAndTxt("E_Step:invalidInput",
+                                "invalid named parameter");
+                    }
+                }
+                
+                mxFree(optName);
+            } else {
+                mexErrMsgIdAndTxt( "E_Step:invalidInputType",
+                "Expected string for name:value pair.");
+            }
+        }
+    }
+    
+   
+    
     Array2d initial_distn;
     initial_distn << 1-prior, prior;
 
@@ -121,15 +165,18 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
         emission_softcounts.setZero();
         init_softcounts.setZero();
         loglike = 0;
-
         int num_threads = omp_get_num_threads();
         int blocklen = 1 + ((num_sequences - 1) / num_threads);
         int sequence_idx_start = blocklen * omp_get_thread_num();
         int sequence_idx_end = min(sequence_idx_start+blocklen,num_sequences);
+        //mexPrintf("start:%d   end:%d\n", sequence_idx_start, sequence_idx_end);
+
 
         for (int sequence_index=sequence_idx_start; sequence_index < sequence_idx_end; sequence_index++) {
+
             // NOTE: -1 because Matlab indexing starts at 1
             int32_t sequence_start = starts[sequence_index] - 1;
+ 
             int32_t T = lengths[sequence_index];
 
             int8_t *data = alldata + num_subparts*sequence_start;
@@ -138,32 +185,44 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
             //// likelihoods
             double s_likelihoods[2*T];
             Map<Array2Xd,Aligned> likelihoods(s_likelihoods,2,T);
+
             likelihoods.setOnes();
-            for (int t=0; t<T; t++) {
-                for (int n=0; n<num_subparts; n++) {
-                    if (data[n+num_subparts*t] != 0) {
-                        likelihoods.col(t) *= Bn.col(2*n + (data[n+num_subparts*t] == 2));
-                    }
-                }
-            }
+             for (int t=0; t<T; t++) {
+                 for (int n=0; n<num_subparts; n++) {
+                     if (data[n+num_subparts*t] != 0) {                         
+                         likelihoods.col(t) *= Bn.col(2*n + (data[n+num_subparts*t] == 2));
+                     }
+                 }
+             }
 
             //// forward messages
             double norm;
             double s_alpha[2*T] __attribute__((aligned(16)));
+            double contribution;
             Map<MatrixXd,Aligned> alpha(s_alpha,2,T);
             alpha.col(0) = initial_distn * likelihoods.col(0);
             norm = alpha.col(0).sum();
             alpha.col(0) /= norm;
-            loglike += log(norm);
+            contribution = log(norm);
+            if(normalizeLengths) {
+                contribution = contribution / T;
+            }
+            loglike += contribution;
+                
             for (int t=0; t<T-1; t++) {
                 alpha.col(t+1) = (As.block(0,2*(resources[t]-1),2,2) * alpha.col(t)).array()
                     * likelihoods.col(t+1);
                 norm = alpha.col(t+1).sum();
                 alpha.col(t+1) /= norm;
-                loglike += log(norm);
+                contribution = log(norm);
+                if(normalizeLengths) {
+                    contribution = contribution / T;
+                }
+                loglike += contribution;
             }
 
             //// backward messages and statistic counting
+
             double s_gamma[2*T] __attribute__((aligned(16)));
             Map<Array2Xd,Aligned> gamma(s_gamma,2,T);
             gamma.col(T-1) = alpha.col(T-1);
@@ -172,14 +231,15 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
                     emission_softcounts.col(2*n + (data[n+num_subparts*(T-1)] == 2)) += gamma.col(T-1);
                 }
             }
+
             for (int t=T-2; t>=0; t--) {
+
                 Matrix2d A = As.block(0,2*(resources[t]-1),2,2);
                 Array22d pair = A.array();
                 pair.rowwise() *= alpha.col(t).transpose().array();
                 pair.colwise() *= gamma.col(t+1);
                 pair.colwise() /= (A*alpha.col(t)).array();
                 pair = (pair != pair).select(0.,pair); // NOTE: replace NaNs
-
                 trans_softcounts.block(0,2*(resources[t]-1),2,2) += pair;
 
                 gamma.col(t) = pair.colwise().sum().transpose();
@@ -211,5 +271,6 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
             *total_loglike += loglike;
         }
     }
-}
+     
+ }
 

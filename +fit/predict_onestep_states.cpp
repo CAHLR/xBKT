@@ -29,7 +29,7 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 
     if (!mxGetField(prhs[0],0,"starts")) { mexErrMsgTxt("data missing 'starts' field\n"); }
     int32_t *starts = (int32_t *) mxGetData(mxGetField(prhs[0],0,"starts"));
-    int num_sequences = max(mxGetM(mxGetField(prhs[0],0,"starts")),
+    int num_sequences = max(mxGetN(mxGetField(prhs[0],0,"starts")),
             mxGetM(mxGetField(prhs[0],0,"starts")));
 
     if (!mxGetField(prhs[0],0,"lengths")) { mexErrMsgTxt("data missing 'lengths' field\n"); }
