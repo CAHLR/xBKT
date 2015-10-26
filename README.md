@@ -44,7 +44,7 @@ best_model.A
 ## Cloning the repository ##
 
 ```
-git clone git@github.com:mattjj/edX-hmm.git
+git clone git@github.com/CAHLR/xBKT.git
 ```
 
 ## Installing Eigen ##
@@ -53,13 +53,62 @@ Get Eigen from http://eigen.tuxfamily.org/index.php?title=Main_Page and unzip
 it somewhere (anywhere will work, but it affects the mex command below). On a
 \*nix machine, these commands should put Eigen in /usr/local/include:
 
+
     cd /usr/local/include
     wget --no-check-certificate http://bitbucket.org/eigen/eigen/get/3.1.3.tar.gz
     tar -xzvf 3.1.3.tar.gz
     ln -s eigen-eigen-2249f9c22fe8/Eigen ./Eigen
     rm 3.1.3.tar.gz
 
+Similarly, if working in OS X, you can download the latest stable version of Eigen 
+from the site above. This program has run successfully with `Eigen 3.2.5`.
+First move the file to /usr/local/include, then unzip and create simplified link to Eigen. 
+These commands can be used below:
+
+
+    mv <path to file>/3.1.3.tar.gz /usr/local/include/3.1.3.tar.gz
+    tar -xvf 3.1.3.tar.gz
+    ln -s <name of unzipped file>/Eigen ./Eigen
+    rm 3.1.3.tar.gz
+
+
 ## Compiling ##
 
-Just run `make` in the top-level directory.
+Run `make` in the root directory of the xBKT project folder. If this step runs successfully, you should see a MEX file generated for each of the .cpp files. 
+
+## Potential Errors When Running Makefile##
+
+Before running `make`, check `Makefile` in xBKT. Be sure that the `MATLABPATH` matches your matlab version and `EIGENPATH` matches your Eigen filepath. For example, if you're working with Matlab 2015 in OS X, you may need to update `Makefile` with the new name of your `Applications` from
+
+```
+    ifeq ($(UNAME),Darwin)
+        MATLABPATH=/Applications/MATLAB_R2013a.app
+    endif
+```
+
+to something like
+
+
+```
+    ifeq ($(UNAME),Darwin)
+        MATLABPATH=/Applications/MATLAB_R2015b.app
+    endif
+```    
+
+
+You may also see the following error while running `make`
+```
+    make: g++-4.9: No such file or directory
+```
+If you see this error, you need to download gcc49. This can be downloaded with [brew](http://brew.sh/). 
+
+These steps would allow you to set up gcc49. Run the following commands
+```
+    brew install --enable-cxx gcc49
+    brew install mpfr
+    brew install gmp
+    brew install libmpc
+```
+You may also need to change `CXX=g++-4.9` to `CXX=g++-5` in `Makefile`, depending on the version you set up. 
+
 
