@@ -76,7 +76,7 @@ These commands can be used below:
 
 Run `make` in the root directory of the xBKT project folder. If this step runs successfully, you should see a MEX file generated for each of the .cpp files. 
 
-## Potential Errors When Running Makefile##
+## Potential Errors When Running Makefile on OS X ##
 
 Before running `make`, check `Makefile` in xBKT. Be sure that the `MATLABPATH` matches your matlab version and `EIGENPATH` matches your Eigen filepath. For example, if you're working with Matlab 2015 in OS X, you may need to update `Makefile` with the new name of your `Applications` from
 
@@ -96,11 +96,14 @@ to something like
 ```    
 
 
-You may also see the following error while running `make`
+You may see the following error while running `make`
 ```
     make: g++-4.9: No such file or directory
 ```
-If you see this error, you need to download gcc49. This can be downloaded with [brew](http://brew.sh/). 
+
+Try `gcc --version` in your terminal. If a version exists, you already have gcc installed. This error may be due to an incorrect version of gcc being called. In order to change the gcc version in `Makefile`, update the `CXX` variable. For example, you may need to change `CXX=g++-4.9` to `CXX=g++-5`, depending on the version you set up. 
+
+If a version does not exist, you  may need to download gcc49. This can be downloaded with [brew](http://brew.sh/). 
 
 These steps would allow you to set up gcc49. Run the following commands
 ```
@@ -109,6 +112,6 @@ These steps would allow you to set up gcc49. Run the following commands
     brew install gmp
     brew install libmpc
 ```
-You may also need to change `CXX=g++-4.9` to `CXX=g++-5` in `Makefile`, depending on the version you set up. 
+
 
 
